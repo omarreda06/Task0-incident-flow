@@ -3,22 +3,42 @@ load_dotenv()
 
 import json
 import os
+import requests
 from fastapi import FastAPI, BackgroundTasks
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from google import genai
 from google.genai import types
 
 app = FastAPI()
 
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request, exc):
+    body = await request.body()
+    print("VALIDATION FAILED")
+    print("Raw body received:", body)
+    print("Errors:", exc.errors())
+    return JSONResponse(status_code=422, content={"detail": exc.errors()})
+
 client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
+# ... rest of your file continues as before
+
+# ServiceNow connection details, read from .env
+SN_INSTANCE = os.environ["SN_INSTANCE"]      # e.g. dev12345.service-now.com
+SN_USER = os.environ["SN_USER"]
+SN_PASSWORD = os.environ["SN_PASSWORD"]
 
 # Keeps track of tickets we've already processed, so duplicates are skipped (FR5).
 processed_ids = set()
 
-# Placeholder KB articles — replace with the real kb_articles.json once you have it.
+# The real 5 knowledge articles — Gemini must answer using only these.
 KB_ARTICLES = [
-    {"title": "Printer not printing", "body": "Restart the printer, check the paper tray, reinstall the driver."},
-    {"title": "Email not syncing", "body": "Check internet connection, re-enter password, restart the mail app."},
+    "Printer not printing: Restart the printer and unplug the cable for 30 seconds.",
+    "Email not sending: Check SMTP settings and ensure port 587 is open.",
+    "Cannot access system: Reset password via the 'Forgot Password' page.",
+    "Slow network: Restart the router and check cable connections.",
+    "Browser pages not loading: Clear cache and try incognito mode.",
 ]
 
 
@@ -26,31 +46,35 @@ class IncidentPayload(BaseModel):
     incident_sys_id: str
     number: str
     short_description: str
-    description: str = ""
-    priority: str | None = None
+    description: str | None = ""
+    priority: int | None = None
 
 
 @app.post("/webhook")
 async def webhook(payload: IncidentPayload, background_tasks: BackgroundTasks):
-    # Skip if we've already handled this exact ticket (FR5).
     if payload.incident_sys_id in processed_ids:
         return {"status": "duplicate, skipped"}
 
     processed_ids.add(payload.incident_sys_id)
 
-    # Hand off the slow work to run AFTER we reply (NFR1).
     background_tasks.add_task(process_incident, payload)
 
     return {"status": "received"}
 
 
 def process_incident(payload: IncidentPayload):
-    prompt = f"""
-You are a support ticket triage agent. Using ONLY the knowledge articles below,
+    articles_text = "\n".join(f"- {a}" for a in KB_ARTICLES)
+
+    prompt = f"""You are a support ticket triage agent. Using ONLY the knowledge articles below,
 decide one action for this incident: "respond", "ask", or "escalate".
 
+Rules:
+- If an article clearly and specifically covers the problem, choose "respond" and give the fix as the message.
+- If the ticket is too vague to match confidently to an article, choose "ask" and write a clarifying question as the message.
+- If no article covers the topic at all, choose "escalate" and briefly say why as the message.
+
 Knowledge articles:
-{KB_ARTICLES}
+{articles_text}
 
 Incident:
 Short description: {payload.short_description}
@@ -73,7 +97,6 @@ Reply with strict JSON only, no extra text, in this exact shape:
         return
 
     try:
-        # Gemini sometimes wraps JSON in markdown code fences — strip those if present.
         text = response.text.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
         decision_data = json.loads(text)
     except (json.JSONDecodeError, AttributeError) as e:
@@ -81,9 +104,46 @@ Reply with strict JSON only, no extra text, in this exact shape:
         print(f"Raw response was: {response.text}")
         return
 
-    if decision_data.get("decision") not in {"respond", "ask", "escalate"}:
+    decision = decision_data.get("decision")
+    message = decision_data.get("message", "")
+
+    if decision not in {"respond", "ask", "escalate"}:
         print(f"ERROR: Invalid decision value from Gemini for {payload.number}: {decision_data}")
         return
 
     print(f"Decision for {payload.number}: {decision_data}")
-    # Next step: write decision_data back to ServiceNow.
+
+    write_back_to_servicenow(payload.incident_sys_id, decision, message)
+
+
+def write_back_to_servicenow(sys_id: str, decision: str, message: str):
+    url = f"https://{SN_INSTANCE}/api/now/table/incident/{sys_id}"
+
+    if decision == "respond":
+        body = {
+            "work_notes": message,
+            "close_notes": message,
+            "close_code": "Solved (Permanently)",
+            "state": "6",
+        }
+    elif decision == "ask":
+        body = {
+            "comments": message,
+        }
+    else:  # escalate
+        body = {
+            "work_notes": f"Escalated: {message}",
+        }
+
+    try:
+        resp = requests.patch(
+            url,
+            auth=(SN_USER, SN_PASSWORD),
+            headers={"Content-Type": "application/json", "Accept": "application/json"},
+            json=body,
+            timeout=15,
+        )
+        resp.raise_for_status()
+        print(f"Wrote '{decision}' decision back to ServiceNow for sys_id {sys_id}")
+    except Exception as e:
+        print(f"ERROR: Failed to write back to ServiceNow: {e}")
