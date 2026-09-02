@@ -10,11 +10,11 @@ The idea: when someone opens a support ticket in ServiceNow, it gets sent automa
 
 ## How it works
 
-1. A new incident is created in ServiceNow.
-2. A Business Rule fires automatically and sends the ticket's details to my FastAPI service as JSON.
-3. The service replies immediately so ServiceNow doesn't wait around, then in the background sends the ticket text plus five knowledge articles to Gemini.
-4. Gemini responds with a decision (respond, ask, or escalate) and a short message, based only on those knowledge articles.
-5. The service writes that decision back onto the original ticket through ServiceNow's API.
+- A new incident is created in ServiceNow.
+- A Business Rule fires automatically and sends the ticket's details to my FastAPI service as JSON.
+- The service replies immediately so ServiceNow doesn't wait around, then in the background sends the ticket text plus five knowledge articles to Gemini.
+- Gemini responds with a decision (respond, ask, or escalate) and a short message, based only on those knowledge articles.
+- The service writes that decision back onto the original ticket through ServiceNow's API.
 
 ## What's working
 
