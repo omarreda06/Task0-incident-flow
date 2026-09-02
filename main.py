@@ -1,6 +1,10 @@
-from fastapi import FastAPI, BackgroundTasks, Request
-from pydantic import BaseModel
+from dotenv import load_dotenv
+load_dotenv()
+
+import json
 import os
+from fastapi import FastAPI, BackgroundTasks
+from pydantic import BaseModel
 from google import genai
 from google.genai import types
 
@@ -56,13 +60,30 @@ Reply with strict JSON only, no extra text, in this exact shape:
 {{"decision": "respond|ask|escalate", "message": "short message"}}
 """
 
-    response = client.models.generate_content(
-        model="gemini-flash-lite-latest",
-        contents=prompt,
-        config=types.GenerateContentConfig(
-            http_options=types.HttpOptions(timeout=60000)
+    try:
+        response = client.models.generate_content(
+            model="gemini-flash-lite-latest",
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                http_options=types.HttpOptions(timeout=60000)
+            )
         )
-    )
+    except Exception as e:
+        print(f"ERROR: Gemini call failed for {payload.number}: {e}")
+        return
 
-    print(f"Decision for {payload.number}: {response.text}")
-    # Next step: parse this JSON and write it back to ServiceNow.
+    try:
+        # Gemini sometimes wraps JSON in markdown code fences — strip those if present.
+        text = response.text.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+        decision_data = json.loads(text)
+    except (json.JSONDecodeError, AttributeError) as e:
+        print(f"ERROR: Could not parse Gemini's response for {payload.number}: {e}")
+        print(f"Raw response was: {response.text}")
+        return
+
+    if decision_data.get("decision") not in {"respond", "ask", "escalate"}:
+        print(f"ERROR: Invalid decision value from Gemini for {payload.number}: {decision_data}")
+        return
+
+    print(f"Decision for {payload.number}: {decision_data}")
+    # Next step: write decision_data back to ServiceNow.
