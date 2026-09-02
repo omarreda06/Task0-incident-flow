@@ -22,12 +22,13 @@ async def validation_exception_handler(request, exc):
     return JSONResponse(status_code=422, content={"detail": exc.errors()})
 
 client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
-# ... rest of your file continues as before
 
 # ServiceNow connection details, read from .env
 SN_INSTANCE = os.environ["SN_INSTANCE"]      # e.g. dev12345.service-now.com
 SN_USER = os.environ["SN_USER"]
 SN_PASSWORD = os.environ["SN_PASSWORD"]
+SN_CLIENT_ID = os.environ["SN_CLIENT_ID"]
+SN_CLIENT_SECRET = os.environ["SN_CLIENT_SECRET"]
 
 # Keeps track of tickets we've already processed, so duplicates are skipped (FR5).
 processed_ids = set()
@@ -116,6 +117,23 @@ Reply with strict JSON only, no extra text, in this exact shape:
     write_back_to_servicenow(payload.incident_sys_id, decision, message)
 
 
+def get_servicenow_token() -> str:
+    """Gets a fresh OAuth access token from ServiceNow (Basic Auth is blocked on this instance)."""
+    response = requests.post(
+        f"https://{SN_INSTANCE}/oauth_token.do",
+        data={
+            "grant_type": "password",
+            "client_id": SN_CLIENT_ID,
+            "client_secret": SN_CLIENT_SECRET,
+            "username": SN_USER,
+            "password": SN_PASSWORD,
+        },
+        timeout=15,
+    )
+    response.raise_for_status()
+    return response.json()["access_token"]
+
+
 def write_back_to_servicenow(sys_id: str, decision: str, message: str):
     url = f"https://{SN_INSTANCE}/api/now/table/incident/{sys_id}"
 
@@ -136,10 +154,14 @@ def write_back_to_servicenow(sys_id: str, decision: str, message: str):
         }
 
     try:
+        token = get_servicenow_token()
         resp = requests.patch(
             url,
-            auth=(SN_USER, SN_PASSWORD),
-            headers={"Content-Type": "application/json", "Accept": "application/json"},
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+            },
             json=body,
             timeout=15,
         )

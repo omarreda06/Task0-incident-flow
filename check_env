@@ -1,0 +1,7 @@
+from dotenv import load_dotenv
+load_dotenv()
+import os
+
+for key in ["SN_INSTANCE", "SN_USER", "SN_CLIENT_ID", "SN_CLIENT_SECRET"]:
+    val = os.environ.get(key, "NOT SET")
+    print(f"{key}: length={len(val)}, first2={val[:2]}, last2={val[-2:]}")
