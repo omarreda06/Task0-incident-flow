@@ -10,20 +10,20 @@ The idea: when someone opens a support ticket in ServiceNow, it gets sent automa
 
 ## How it works
 
-- A new incident is created in ServiceNow.
-- A Business Rule fires automatically and sends the ticket's details to my FastAPI service as JSON.
-- The service replies immediately so ServiceNow doesn't wait around, then in the background sends the ticket text plus five knowledge articles to Gemini.
-- Gemini responds with a decision (respond, ask, or escalate) and a short message, based only on those knowledge articles.
-- The service writes that decision back onto the original ticket through ServiceNow's API.
+1- A new incident is created in ServiceNow.
+2- A Business Rule fires automatically and sends the ticket's details to my FastAPI service as JSON.
+3- The service replies immediately so ServiceNow doesn't wait around, then in the background sends the ticket text plus five knowledge articles to Gemini.
+4- Gemini responds with a decision (respond, ask, or escalate) and a short message, based only on those knowledge articles.
+5- The service writes that decision back onto the original ticket through ServiceNow's API.
 
 ## What's working
 
-- The /webhook endpoint accepts a ticket, replies fast, and processes the Gemini call in the background.
-- Gemini sends back a decision in strict JSON, grounded only in the five knowledge articles.
-- Duplicate protection, so the same ticket only gets processed once.
-- Writing the decision back to ServiceNow: respond resolves the ticket with the fix, ask posts a clarifying question as a comment, escalate adds a work note.
-- All three test cases from test_incidents.json pass (printer -> respond, vague email -> ask, leave request -> escalate).
-- API keys and ServiceNow credentials are read from a .env file, so nothing secret is committed.
+1- The /webhook endpoint accepts a ticket, replies fast, and processes the Gemini call in the background.
+2- Gemini sends back a decision in strict JSON, grounded only in the five knowledge articles.
+3- Duplicate protection, so the same ticket only gets processed once.
+4- Writing the decision back to ServiceNow: respond resolves the ticket with the fix, ask posts a clarifying question as a comment, escalate adds a work note.
+5- All three test cases from test_incidents.json pass (printer -> respond, vague email -> ask, leave request -> escalate).
+6- API keys and ServiceNow credentials are read from a .env file, so nothing secret is committed.
 
 One thing worth knowing: this ServiceNow instance blocks the plain username and password login (Basic Auth) by default now, so the write-back step uses OAuth instead. That part took a while to figure out, more on that in reflection.md.
 
