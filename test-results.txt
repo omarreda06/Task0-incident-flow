@@ -1,0 +1,43 @@
+Test Case Results — Task 0 Agentic Incident Flow
+==================================================
+
+These are the raw terminal logs from running the three test cases in
+test_incidents.json against the live service, connected to a real
+ServiceNow PDI.
+
+--------------------------------------------------
+Test 1: Printer not printing after office move
+Expected decision: respond
+--------------------------------------------------
+INFO:     148.139.124.20:0 - "POST /webhook HTTP/1.1" 200 OK
+Decision for INC0010020: {'decision': 'respond', 'message': 'Restart the printer and unplug the cable for 30 seconds.'}
+Wrote 'respond' decision back to ServiceNow for sys_id 2e0d95da2f8fc310c51912807fa4e34c
+
+Result: PASS — decision matched expected value (respond)
+
+
+--------------------------------------------------
+Test 2: Something is not working (vague ticket)
+Expected decision: ask
+--------------------------------------------------
+INFO:     148.139.124.20:0 - "POST /webhook HTTP/1.1" 200 OK
+Decision for INC0010021: {'decision': 'ask', 'message': 'Could you please provide more details about what is not working?'}
+Wrote 'ask' decision back to ServiceNow for sys_id dccd59d62fcfc310c51912807fa4e397
+
+Result: PASS — decision matched expected value (ask)
+
+
+--------------------------------------------------
+Test 3: Request: annual leave approval
+Expected decision: escalate
+--------------------------------------------------
+INFO:     148.139.124.20:0 - "POST /webhook HTTP/1.1" 200 OK
+Decision for INC0010022: {'decision': 'escalate', 'message': 'No article covers annual leave requests.'}
+Wrote 'escalate' decision back to ServiceNow for sys_id 2d6e191a2fcfc310c51912807fa4e370
+
+Result: PASS — decision matched expected value (escalate)
+
+
+==================================================
+Summary: 3 / 3 test cases passed.
+==================================================
